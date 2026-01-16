@@ -1,4 +1,6 @@
 import * as itemService from "../services/item.service.js";
+import { calculateItemPrice } from "../services/pricing.service.js";
+
 
 export const createItem = async (req, res) => {
   try {
@@ -55,5 +57,23 @@ export const deleteItem = async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+export const getItemPrice = async (req, res) => {
+  try {
+    const { addons, duration, time } = req.query;
+
+    const result = await calculateItemPrice({
+      itemId: req.params.id,
+      addons: addons ? addons.split(",") : [],
+      duration: duration ? Number(duration) : undefined,
+      time
+    });
+
+    res.json({ success: true, data: result });
+
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
   }
 };
