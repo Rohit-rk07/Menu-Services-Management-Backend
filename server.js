@@ -3,12 +3,10 @@ import dotenv from "dotenv";
 import connectDB from "./config/db.js";
 
 import categoryRoutes from "./routes/category.routes.js";
+import subcategoryRoutes from "./routes/subcategory.routes.js";
 import itemRoutes from "./routes/item.routes.js";
 import addonRoutes from "./routes/addon.routes.js";
 import bookingRoutes from "./routes/booking.routes.js";
-
-
-
 
 dotenv.config();
 
@@ -28,15 +26,13 @@ app.get("/", (req, res) => {
 
 app.use("/api/categories", categoryRoutes);
 
+app.use("/api/subcategories", subcategoryRoutes);
+
 app.use("/api/items", itemRoutes);
 
 app.use("/api/addons", addonRoutes);
 
 app.use("/api/bookings", bookingRoutes);
-
-
-
-
 
 // Server
 app.listen(PORT, () => {
