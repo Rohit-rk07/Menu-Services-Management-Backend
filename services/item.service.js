@@ -23,7 +23,9 @@ const validateParent = async (data) => {
   }
 
   if (data.subcategory) {
-    const subcategory = await Subcategory.findById(data.subcategory).populate("category");
+    const subcategory = await Subcategory.findById(data.subcategory).populate(
+      "category"
+    );
     if (!subcategory) throw new Error("Parent subcategory not found");
     if (!subcategory.is_active || !subcategory.category.is_active) {
       throw new Error("Parent category or subcategory is inactive");
@@ -43,6 +45,46 @@ export const createItem = async (data) => {
     throw new Error("Pricing configuration is required");
   }
 
+  const { type, config } = data.pricing;
+
+  if (type === "COMPLIMENTARY" && config && Object.keys(config).length > 0) {
+    throw new Error("Complimentary items cannot have pricing config");
+  }
+
+  if (type === "STATIC") {
+    if (typeof config.price !== "number" || config.price < 0) {
+      throw new Error("Static pricing requires valid price");
+    }
+  }
+
+  if (type === "TIERED") {
+    if (!Array.isArray(config.tiers) || config.tiers.length === 0) {
+      throw new Error("Tiered pricing requires tiers");
+    }
+
+    // check overlap
+    const sorted = config.tiers.sort((a, b) => a.upTo - b.upTo);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].upTo <= sorted[i - 1].upTo) {
+        throw new Error("Tier ranges must not overlap");
+      }
+    }
+  }
+
+  if (type === "DISCOUNTED") {
+    if (config.basePrice <= 0) throw new Error("Invalid base price");
+
+    if (config.discountType === "PERCENT" && config.discountValue > 100) {
+      throw new Error("Discount percent cannot exceed 100");
+    }
+  }
+
+  if (type === "DYNAMIC") {
+    if (!Array.isArray(config.windows) || config.windows.length === 0) {
+      throw new Error("Dynamic pricing requires time windows");
+    }
+  }
+
   return await Item.create(data);
 };
 
@@ -58,27 +100,37 @@ export const getAllItems = async (query) => {
     active,
     search,
     categoryId,
-    tax_applicable
+    tax_applicable,
   } = query;
 
   const filter = {};
 
   if (active !== undefined) filter.is_active = active === "true";
   if (categoryId) filter.category = categoryId;
-  if (tax_applicable !== undefined) filter.tax_applicable = tax_applicable === "true";
+  if (tax_applicable !== undefined)
+    filter.tax_applicable = tax_applicable === "true";
 
   if (search) {
-    filter.name = { $regex: search, $options: "i" };
+    filter.$or = [
+      { name: { $regex: search, $options: "i" } },
+      { description: { $regex: search, $options: "i" } },
+    ];
   }
 
   const skip = (page - 1) * limit;
 
-  const items = await Item.find(filter)
+  let items = await Item.find(filter)
     .populate("category", "name is_active")
     .populate("subcategory", "name is_active")
     .sort({ [sortBy]: order === "asc" ? 1 : -1 })
     .skip(skip)
     .limit(Number(limit));
+
+  items = items.filter((i) => {
+    if (i.category && !i.category.is_active) return false;
+    if (i.subcategory && !i.subcategory.is_active) return false;
+    return true;
+  });
 
   const total = await Item.countDocuments(filter);
 
@@ -88,8 +140,8 @@ export const getAllItems = async (query) => {
       total,
       page: Number(page),
       limit: Number(limit),
-      totalPages: Math.ceil(total / limit)
-    }
+      totalPages: Math.ceil(total / limit),
+    },
   };
 };
 
