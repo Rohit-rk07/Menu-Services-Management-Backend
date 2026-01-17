@@ -213,13 +213,13 @@ PORT=8000
 3. Start the server:
 
 ```bash
-node server.js
+npm start
 ```
 
-If you prefer auto-reload, you can run nodemon directly:
+If you prefer auto-reload, run it in dev mode (nodemon):
 
 ```bash
-npx nodemon server.js
+npm run dev
 ```
 
 4. Verify:
