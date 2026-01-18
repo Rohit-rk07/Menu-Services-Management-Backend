@@ -264,7 +264,7 @@ Also I have prior hands-on experience working with it, I was able to focus more 
 
 Making pricing flexible without letting it break. I had to support different pricing styles while also adding enough validation to prevent wrong setups, like overlapping tiers or missing required values for tiered and dynamic pricing.
 
-### What you would improve or refactor if you had more time
+### What I would improve or refactor if you had more time
 
 - Add a proper **validation layer** (e.g., Zod/Joi) and consistent error responses.
 - Add **tests** for pricing/tax edge cases and booking overlap scenarios.
