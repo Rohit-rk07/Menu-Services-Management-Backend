@@ -1,6 +1,6 @@
-# Menu Services Management Backend
+# Menu & Services Management Backend
 
-A lightweight Node.js + Express API for managing categories, subcategories, items, addons, and bookings, with a dedicated **pricing engine** and **tax inheritance**.
+A Node.js + Express API for managing categories, subcategories, items, addons, and bookings, with a dedicated **pricing engine** and **tax inheritance**.
 
 ## Overall architecture
 
@@ -31,27 +31,39 @@ The project follows a simple layering that keeps HTTP concerns separate from bus
   - Relationship modeling via `ObjectId` references
 
 **Why this structure?**
-- It keeps the pricing/tax logic reusable (not tied to Express).
-- Controllers stay thin; most behavior lives in services.
-- Models remain the single “source of truth” for persistence rules (constraints/indexes).
+
+- I organized the project using a layered structure (routes → controllers → services → models) to keep responsibilities clearly separated and the system easy to understand and extend.
+
+- Routes are only responsible for defining endpoints. They don’t contain business logic.
+
+- Controllers only handle request and response flow. They stay thin and readable.
+
+- Services contain all core business logic such as pricing, tax inheritance, and booking rules.
+
+- Models act as the single source of truth for data persistence. They define schema structure, relationships, and constraints, so database rules are not scattered across the codebase.
+
+- This separation makes the codebase clean, predictable, and scalable. Each layer has a clear purpose, which reduces coupling, avoids mixing concerns, and makes debugging much easier.
 
 ## Data modeling decisions
 
 This project uses MongoDB (via Mongoose) and models the domain around a menu/catalog:
 
 ### Category (`models/Category.model.js`)
+
 - `name` (unique)
 - `tax_applicable` (default `false`)
 - `tax_percentage` (required only when `tax_applicable === true`)
 - `is_active` soft-delete flag
 
 ### Subcategory (`models/Subcategory.model.js`)
+
 - Belongs to a **Category**: `category: ObjectId → Category`
 - `tax_applicable` is **optional** (can be `true`, `false`, or unset)
 - `tax_percentage` optional
 - Uniqueness: `(name, category)`
 
 ### Item (`models/item.model.js`)
+
 - Belongs to **either** Category **or** Subcategory
   - enforced in service layer (`validateParent` in `services/item.service.js`)
   - `parent_type` stored as `CATEGORY | SUBCATEGORY` for clarity
@@ -66,15 +78,18 @@ This project uses MongoDB (via Mongoose) and models the domain around a menu/cat
   - `tax_percentage` optional
 
 Indexes:
-- `(name, category)` and `(name, subcategory)` are unique (sparse) to reduce duplicates within the same parent.
+
+- `(name, category)` and `(name, subcategory)` are unique to reduce duplicates within the same parent.
 
 ### Addon (`models/Addon.model.js`)
+
 - Belongs to an **Item**: `item: ObjectId → Item`
 - `price` (>= 0)
 - Optional `group` and `is_mandatory`
 - Uniqueness: `(item, name)`
 
 ### Booking (`models/Booking.model.js`)
+
 - Belongs to an **Item**: `item: ObjectId → Item`
 - `date` + `startTime` + `endTime` (stored as strings for simplicity)
 - `status`: `BOOKED | CANCELLED`
@@ -85,11 +100,13 @@ Indexes:
 Tax is resolved through a dedicated resolver: `services/tax.service.js` → `resolveTax(item)`.
 
 **Inheritance priority (highest → lowest):**
+
 1. **Item**
 2. **Subcategory**
 3. **Category**
 
 **Behavior details:**
+
 - If `item.tax_applicable === true`, the item explicitly opts into tax and wins.
   - percentage used: `item.tax_percentage || 0`
 - If `item.tax_applicable === false`, the item explicitly opts out of tax and wins.
@@ -101,19 +118,19 @@ Tax is resolved through a dedicated resolver: `services/tax.service.js` → `res
   - If item directly belongs to a category, category tax applies if `category.tax_applicable` is true.
 - Default if nothing matches: **no tax**.
 
-This gives flexibility to override tax at the lowest level (item), while still supporting sensible defaults at category level.
-
 ## How the pricing engine works
 
 Pricing is computed by `services/pricing.service.js` → `calculateItemPrice({ itemId, addons, duration, time })`.
 
 ### Inputs
+
 - `itemId` (required)
 - `addons` (optional query list of addon ids)
 - `duration` (required only for `TIERED` pricing)
 - `time` (required only for `DYNAMIC` pricing)
 
 ### Pricing rule resolution
+
 The item stores `pricing.type` and `pricing.config`. The engine selects logic via `switch(type)`:
 
 - **STATIC**
@@ -139,17 +156,22 @@ The item stores `pricing.type` and `pricing.config`. The engine selects logic vi
   - errors if no window matches (“not available at this time”)
 
 ### Addons
+
 If addon ids are provided:
+
 - fetches active addons tied to this item: `Addon.find({ _id: { $in: addons }, item: itemId, is_active: true })`
 - sums addon prices into `addonsTotal`
 
 ### Tax
+
 - Computes `subtotal = basePrice + addonsTotal`
 - Calls `resolveTax(item)`
 - If applicable, computes tax as: `taxAmount = subtotal * (tax_percentage / 100)`
 
 ### Output
+
 The endpoint returns a breakdown:
+
 - applied pricing rule
 - base price + discount (if any)
 - addons total
@@ -180,23 +202,23 @@ The endpoint returns a breakdown:
 
 ## Tradeoffs / simplifications
 
-- **No authentication/authorization**: assumed trusted admin usage.
-- **No transactions**: e.g. addon creation both creates addon and pushes to item; in real systems I’d wrap this with a transaction.
-- **Time handling is simplified**:
-  - `startTime/endTime/time` are strings; comparisons are lexical.
-  - Works reliably if you always use `HH:MM` 24-hour format.
-- **No currency/rounding strategy**:
-  - prices are plain numbers; a production system would standardize rounding and currency.
-- **No OpenAPI/Swagger + no tests**:
-  - prioritized implementing the required pricing + tax logic end-to-end.
+- Final prices are not stored to avoid stale data.
+
+- Price range filtering is not fully optimized at DB level due to dynamic pricing (It can be improved using caching or materialized views).
+
+- Add-on grouping is supported at schema level but not deeply enforced to keep scope controlled.
+
+- Booking system assumes fixed slot-based availability instead of continuous time ranges.
 
 ## How to run locally
 
 ### Prerequisites
-- Node.js (LTS recommended)
+
+- Node.js
 - MongoDB (local or Atlas)
 
 ### Setup
+
 1. Install dependencies:
 
 ```bash
@@ -216,30 +238,35 @@ PORT=8000
 npm start
 ```
 
-If you prefer auto-reload, run it in dev mode (nodemon):
-
-```bash
-npm run dev
-```
-
 4. Verify:
+
 - `GET http://localhost:8000/` should return `API is running`
 
 ## Written reflections
 
-### Why did you choose your database?
-I chose **MongoDB** because the domain is document-friendly (categories/items/addons/bookings) and Mongoose lets me iterate quickly with schemas, indexes, and references without a heavy migration workflow.
+### Why MongoDB?
 
-### Three things you learned while building this
-1. Designing a pricing engine is mostly about **clear contracts** (what inputs are needed per pricing type) and defensive validation.
-2. “Tax inheritance” sounds simple, but you need to decide what **explicit false** means (it should override).
-3. Even small booking logic needs careful thinking about **time overlap** and edge cases.
+I chose **MongoDB** because the project is document-friendly (categories/items/addons/bookings) and MongoDB's document-based model makes it easy to store these structures without forcing everything into rigid tables.
+
+Also I have prior hands-on experience working with it, I was able to focus more on solving the actual business problems in this assignment (pricing logic, tax inheritance, and booking rules) instead of spending time learning a new database.
+
+### Three things I learned while building this
+
+1. Dynamic pricing and tax resolution are essential for large systems:
+   I learned why final prices and tax values should not be stored directly. By resolving pricing and tax dynamically at runtime, we can avoid data inconsistency. For example, if a category’s tax or an item’s pricing rule changes, thousands of dependent items automatically reflect the update without database modifications.
+2. Clean separation of concerns makes complex systems understandable.
+   By separating routes, controllers, services, and models, I found it much easier to understand and manage the system. Routes only define endpoints, controllers handle requests, services contain the real logic, and models focus on data. This split made debugging simpler, avoided mixing responsibilities, and helped complex features like pricing and booking grow without the code becoming confusing or messy.
+
+3. System design choices have long-term impact:-
+   This project taught me how important early design decisions really are. Separating things like tax and pricing into their own services and not storing final calculated values made the system easier to maintain. I realized that shortcuts might work in small projects, but in real systems they turn into problems that are hard to fix later.
 
 ### The hardest technical or design challenge you faced
-Keeping pricing flexible (different strategies) while still validating inputs enough to avoid invalid configurations (like tier overlaps or missing required query params for tiered/dynamic pricing).
+
+Making pricing flexible without letting it break. I had to support different pricing styles while also adding enough validation to prevent wrong setups, like overlapping tiers or missing required values for tiered and dynamic pricing.
 
 ### What you would improve or refactor if you had more time
+
 - Add a proper **validation layer** (e.g., Zod/Joi) and consistent error responses.
 - Add **tests** for pricing/tax edge cases and booking overlap scenarios.
 - Improve time handling by storing times as minutes (ints) or real DateTimes, and enforcing a strict format.
-
+- Add role-based access and authentication
