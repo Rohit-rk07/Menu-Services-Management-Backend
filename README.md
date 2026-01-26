@@ -270,7 +270,3 @@ Making pricing flexible without letting it break. I had to support different pri
 - Add **tests** for pricing/tax edge cases and booking overlap scenarios.
 - Improve time handling by storing times as minutes (ints) or real DateTimes, and enforcing a strict format.
 - Add role-based access and authentication
-
-## 🎥 Project Walkthrough Video
-
-👉 https://drive.google.com/file/d/1J-6HkVw5C6tTVxDPKjhICoFsH4M_tud9/view?usp=sharing
